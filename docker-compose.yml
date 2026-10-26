@@ -1,0 +1,110 @@
+# Full stack on one machine: PostgreSQL + API + scheduler + web (Caddy).
+#   Local:       cp .env.example .env  (keep SITE_ADDRESS=:80)  &&  docker compose up -d --build
+#   Production:  set SITE_ADDRESS to your domain in .env  ->  automatic HTTPS (see README "Déploiement").
+# PostgreSQL is never published on the host network.
+
+x-backend-env: &backend-env
+  ENV: ${ENV:-production}
+  SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-immo}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/${POSTGRES_DB:-immo}
+  FRONTEND_URL: ${PUBLIC_URL:-http://localhost}
+  CORS_ORIGINS: ${PUBLIC_URL:-http://localhost}
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
+  TRUST_PROXY_HEADERS: "true"
+  UPLOAD_DIR: /app/uploads
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+  S3_BUCKET: ${S3_BUCKET:-}
+  S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-}
+  S3_REGION: ${S3_REGION:-}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM: ${SMTP_FROM:-}
+  WEB_CONCURRENCY: ${WEB_CONCURRENCY:-3}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-immo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-immo}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: applies migrations and reference data, then exits. The API waits for it.
+  migrate:
+    build: ./backend
+    environment: *backend-env
+    command: ["sh", "-c", "alembic upgrade head && python -m app.cli init"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment: *backend-env
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  scheduler:
+    build: ./backend
+    restart: unless-stopped
+    environment: *backend-env
+    command: ["python", "-m", "app.cli", "scheduler"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+
+  # Nightly compressed dumps kept for BACKUP_RETENTION_DAYS (see deploy/backup.sh).
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-immo}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-immo}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./backups:/backups
+      - ./deploy/backup.sh:/backup.sh:ro
+    entrypoint: ["sh", "-c", "while true; do sh /backup.sh; sleep 86400; done"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  uploads:
+  caddy_data:
+  caddy_config:

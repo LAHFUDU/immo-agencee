@@ -1,0 +1,15 @@
+.pgdata/
+.env
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+backend/uploads/
+backend/test_uploads/
+frontend/node_modules/
+frontend/dist/
+backups/
+*.log
+
+# Local editor and build artifacts
+.vscode/
+frontend/tsconfig.tsbuildinfo
