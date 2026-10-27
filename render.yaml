@@ -1,0 +1,25 @@
+# Render Blueprint: Dashboard -> New -> Blueprint -> pick this repository.
+# The database is on Neon: paste its connection string into DATABASE_URL when Render asks.
+services:
+  - type: web
+    name: immo-agence
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: LOG_LEVEL
+        value: INFO

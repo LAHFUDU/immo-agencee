@@ -52,6 +52,15 @@ class Settings(BaseSettings):
     SCHEDULER_INTERVAL_SECONDS: int = 300
     LOG_LEVEL: str = "INFO"
 
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def _psycopg_driver(cls, v: str) -> str:
+        # Hosted providers (Neon, Render...) hand out "postgres://" / "postgresql://" URLs; use psycopg 3.
+        for prefix in ("postgres://", "postgresql://"):
+            if v.startswith(prefix):
+                return "postgresql+psycopg://" + v[len(prefix):]
+        return v
+
     @field_validator("SECRET_KEY")
     @classmethod
     def _secret_required_in_prod(cls, v: str, info):

@@ -1,0 +1,17 @@
+.git
+.pgdata
+.ruff_cache
+.vscode
+**/.env
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/node_modules
+frontend/dist
+backend/uploads
+backend/test_uploads
+backend/tests
+backups
+desktop
+docs
+*.log
