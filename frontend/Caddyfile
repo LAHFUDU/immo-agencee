@@ -17,7 +17,7 @@
 	}
 
 	handle /api/* {
-		reverse_proxy backend:8000
+		reverse_proxy {$BACKEND_URL:backend:8000}
 	}
 
 	handle {
