@@ -1,8 +1,10 @@
 ```typescript
-/** Thin fetch wrapper: same-origin cookies, CSRF header on writes, consistent errors. */
+/** Thin fetch wrapper: API calls, cookies, CSRF header, and consistent errors. */
+
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
 let csrfToken: string | null = null;
+
 export const setCsrfToken = (t: string | null) => {
   csrfToken = t;
 };
@@ -19,33 +21,41 @@ export class ApiError extends Error {
     errors?: { field: string; message: string }[],
   ) {
     super(message);
+    this.name = "ApiError";
     this.status = status;
     this.detail = detail;
     this.errors = errors;
   }
 }
 
-type Query = Record<string, string | number | boolean | null | undefined | string[]>;
+type Query = Record<
+  string,
+  string | number | boolean | null | undefined | string[]
+>;
 
 export function qs(query?: Query): string {
   if (!query) return "";
-  const p = new URLSearchParams();
 
-  for (const [k, v] of Object.entries(query)) {
-    if (v === undefined || v === null || v === "") continue;
+  const params = new URLSearchParams();
 
-    if (Array.isArray(v)) {
-      if (v.length) p.set(k, v.join(","));
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === "") continue;
+
+    if (Array.isArray(value)) {
+      if (value.length > 0) {
+        params.set(key, value.join(","));
+      }
     } else {
-      p.set(k, String(v));
+      params.set(key, String(value));
     }
   }
 
-  const s = p.toString();
-  return s ? `?${s}` : "";
+  const result = params.toString();
+  return result ? `?${result}` : "";
 }
 
 let onUnauthorized: (() => void) | null = null;
+
 export const setUnauthorizedHandler = (fn: () => void) => {
   onUnauthorized = fn;
 };
@@ -63,7 +73,9 @@ export async function api<T = unknown>(
   const method =
     opts.method ?? (opts.body !== undefined || opts.form ? "POST" : "GET");
 
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
 
   if (method !== "GET" && csrfToken) {
     headers["X-CSRF-Token"] = csrfToken;
@@ -78,10 +90,10 @@ export async function api<T = unknown>(
     body = JSON.stringify(opts.body);
   }
 
-  let res: Response;
+  let response: Response;
 
   try {
-    res = await fetch(`${API_BASE}/api${path}${qs(opts.query)}`, {
+    response = await fetch(`${API_BASE}/api${path}${qs(opts.query)}`, {
       method,
       headers,
       body,
@@ -96,71 +108,69 @@ export async function api<T = unknown>(
     );
   }
 
-  if (res.status === 204) return undefined as T;
+  if (response.status === 204) {
+    return undefined as T;
+  }
 
-  const isJson = res.headers.get("content-type")?.includes("application/json");
-  const data = isJson ? await res.json().catch(() => null) : null;
+  const isJson = response.headers
+    .get("content-type")
+    ?.includes("application/json");
 
-  if (!res.ok) {
-    if (res.status === 401 && onUnauthorized && !path.startsWith("/auth/")) {
+  const data = isJson
+    ? await response.json().catch(() => null)
+    : null;
+
+  if (!response.ok) {
+    if (
+      response.status === 401 &&
+      onUnauthorized &&
+      !path.startsWith("/auth/")
+    ) {
       onUnauthorized();
     }
 
     const detail = data?.detail;
+
     const message =
       typeof detail === "string"
         ? detail
         : detail?.message ??
-          (res.status === 403
+          (response.status === 403
             ? "Accès refusé."
-            : res.status === 404
+            : response.status === 404
               ? "Élément introuvable."
-              : `Erreur ${res.status}`);
+              : `Erreur ${response.status}`);
 
-    throw new ApiError(res.status, message, detail, data?.errors);
+    throw new ApiError(response.status, message, detail, data?.errors);
   }
 
   return data as T;
 }
 
-/** Downloads a file produced by an authenticated GET endpoint (exports, documents). */
+/** Downloads a file from an authenticated GET endpoint. */
 export async function download(
   path: string,
   query?: Query,
   fallbackName = "export",
-) {
-  const res = await fetch(`${API_BASE}/api${path}${qs(query)}`, {
-    credentials: "include",
-  });
+): Promise<void> {
+  let response: Response;
 
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
+  try {
+    response = await fetch(`${API_BASE}/api${path}${qs(query)}`, {
+      credentials: "include",
+      headers: {
+        Accept: "*/*",
+      },
+    });
+  } catch {
     throw new ApiError(
-      res.status,
-      data?.detail ?? "Téléchargement impossible.",
-      data,
+      0,
+      "Impossible de joindre le serveur. Vérifiez votre connexion.",
+      null,
     );
   }
 
-  const blob = await res.blob();
-  const cd = res.headers.get("content-disposition") ?? "";
-  const name = /filename="([^"]+)"/.exec(cd)?.[1] ?? fallbackName;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
 
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-export interface Page<T> {
-  items: T[];
-  total: number;
-  page: number;
-  page_size: number;
-}
-```
+   
