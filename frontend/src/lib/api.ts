@@ -1,5 +1,5 @@
 /** Thin fetch wrapper: same-origin cookies, CSRF header on writes, consistent errors. */
-
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 let csrfToken: string | null = null;
 export const setCsrfToken = (t: string | null) => {
   csrfToken = t;
@@ -52,8 +52,13 @@ export async function api<T = unknown>(
   }
   let res: Response;
   try {
-    res = await fetch(`/api${path}${qs(opts.query)}`, { method, headers, body, credentials: "same-origin", signal: opts.signal });
-  } catch {
+    res = await fetch(`${API_BASE}/api${path}${qs(opts.query)}`, {
+  method,
+  headers,
+  body,
+  credentials: "include",
+  signal: opts.signal,
+});
     throw new ApiError(0, "Impossible de joindre le serveur. Vérifiez votre connexion.", null);
   }
   if (res.status === 204) return undefined as T;
@@ -73,7 +78,9 @@ export async function api<T = unknown>(
 
 /** Downloads a file produced by an authenticated GET endpoint (exports, documents). */
 export async function download(path: string, query?: Query, fallbackName = "export") {
-  const res = await fetch(`/api${path}${qs(query)}`, { credentials: "same-origin" });
+  const res = await fetch(`${API_BASE}/api${path}${qs(query)}`, {
+  credentials: "include",
+});
   if (!res.ok) {
     const data = await res.json().catch(() => null);
     throw new ApiError(res.status, data?.detail ?? "Téléchargement impossible.", data);
