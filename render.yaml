@@ -23,3 +23,16 @@ services:
         value: "2"
       - key: LOG_LEVEL
         value: INFO
+      # Photos and documents live in Neon object storage (Render's disk is wiped on every restart).
+      - key: STORAGE_BACKEND
+        value: s3
+      - key: S3_BUCKET
+        value: immo-agence-files
+      - key: S3_ENDPOINT_URL
+        value: https://br-dawn-sky-b98cj8a4.storage.c-7.eu-central-1.aws.neon.tech
+      - key: S3_REGION
+        value: eu-central-1
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false

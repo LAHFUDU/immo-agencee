@@ -86,14 +86,23 @@ class LocalStorage:
 class S3Storage:
     def __init__(self):
         import boto3
+        from botocore.config import Config
 
         self.bucket = settings.S3_BUCKET
+        # S3-compatible providers (Neon, R2, MinIO...) need path-style URLs and reject the
+        # optional checksum headers recent boto3 versions send by default.
+        config = Config(
+            s3={"addressing_style": "path"} if settings.S3_ENDPOINT_URL else {},
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
+        )
         self.client = boto3.client(
             "s3",
             endpoint_url=settings.S3_ENDPOINT_URL or None,
             region_name=settings.S3_REGION or None,
             aws_access_key_id=settings.S3_ACCESS_KEY_ID or None,
             aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY or None,
+            config=config,
         )
 
     def save(self, key: str, data: bytes, content_type: str) -> None:
