@@ -1,4 +1,3 @@
-```typescript
 /** Thin fetch wrapper: API calls, cookies, CSRF header, and consistent errors. */
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
